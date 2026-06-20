@@ -1,0 +1,305 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the application (Coach, Parent, Player)",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["coach", "parent", "player"] },
+        "teamId": { "type": "string", "description": "The ID of the team they belong to" },
+        "subscriptionStatus": { "type": "string", "enum": ["active", "inactive"], "description": "Current subscription status" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Subscription": {
+      "title": "Subscription",
+      "description": "User subscription record",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "status": { "type": "string" },
+        "stripeCustomerId": { "type": "string" },
+        "stripeSubscriptionId": { "type": "string" },
+        "plan": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "status"]
+    },
+    "CoachCode": {
+      "title": "Coach Code",
+      "description": "A code for free coach access",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "isUsed": { "type": "boolean" },
+        "type": { "type": "string", "enum": ["full", "trial"] },
+        "durationMonths": { "type": "integer", "description": "Duration of trial in months" },
+        "usedBy": { "type": "string" },
+        "usedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["code", "isUsed"]
+    },
+    "Team": {
+      "title": "Team",
+      "description": "A football team",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "code": { "type": "string", "description": "6-digit code for parents to join" },
+        "coachId": { "type": "string" },
+        "seasonStart": { "type": "string", "format": "date" },
+        "seasonEnd": { "type": "string", "format": "date" },
+        "seasonTag": { "type": "string", "description": "e.g., 25/26" },
+        "maxMatchPlayers": { "type": "number", "description": "Max players allowed for match line-up" },
+        "paymentSettings": {
+          "type": "object",
+          "properties": {
+            "collectMatchFees": { "type": "boolean" },
+            "matchFeeAmount": { "type": "number" },
+            "collectMonthlySubs": { "type": "boolean" },
+            "monthlySubAmount": { "type": "number" },
+            "currency": { "type": "string", "default": "£" }
+          }
+        }
+      },
+      "required": ["name", "code", "coachId"]
+    },
+    "Player": {
+      "title": "Player",
+      "description": "A player on a team",
+      "type": "object",
+      "properties": {
+        "teamId": { "type": "string" },
+        "name": { "type": "string" },
+        "parentIds": { 
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "inviteCode": { "type": "string" },
+        "motmAwards": { "type": "number" },
+        "number": { "type": "string" },
+        "position": { "type": "string" },
+        "profileImageUrl": { "type": "string" }
+      },
+      "required": ["teamId", "name", "parentIds", "motmAwards"]
+    },
+    "Match": {
+      "title": "Match",
+      "description": "A scheduled match or training session",
+      "type": "object",
+      "properties": {
+        "teamId": { "type": "string" },
+        "season": { "type": "string", "description": "Season tag, e.g., 25/26" },
+        "type": { "type": "string", "enum": ["match", "training"] },
+        "matchCategory": { "type": "string", "enum": ["league", "cup", "friendly"] },
+        "opponent": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "meetTime": { "type": "string" },
+        "location": { "type": "string" },
+        "postcode": { "type": "string" },
+        "trainingNotes": { "type": "string" },
+        "status": { "type": "string", "enum": ["scheduled", "in-progress", "completed", "postponed"] },
+        "postponedNote": { "type": "string" },
+        "scoreUs": { "type": "number" },
+        "scoreThem": { "type": "number" },
+        "timerStartTime": { "type": "string", "format": "date-time" },
+        "timerAccumulated": { "type": "number" },
+        "isTimerRunning": { "type": "boolean" },
+        "currentHalf": { "type": "number" },
+        "half1Duration": { "type": "number" },
+        "half2Duration": { "type": "number" },
+        "onPitch": { "type": "array", "items": { "type": "string" } },
+        "onBench": { "type": "array", "items": { "type": "string" } },
+        "coachPotmId": { "type": "string" },
+        "coachPotmName": { "type": "string" },
+        "parentPotmId": { "type": "string" },
+        "parentPotmName": { "type": "string" },
+        "isPotmVotingOpen": { "type": "boolean" },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "enum": ["goal", "sub"] },
+              "playerId": { "type": "string" },
+              "playerName": { "type": "string" },
+              "time": { "type": "string" }
+            }
+          }
+        }
+      },
+      "required": ["teamId", "type", "date", "status"]
+    },
+    "Availability": {
+      "title": "Availability",
+      "description": "A player's availability for a match",
+      "type": "object",
+      "properties": {
+        "matchId": { "type": "string" },
+        "playerId": { "type": "string" },
+        "parentId": { "type": "string" },
+        "teamId": { "type": "string" },
+        "status": { "type": "string", "enum": ["going", "not-going", "maybe"] }
+      },
+      "required": ["matchId", "playerId", "parentId", "teamId", "status"]
+    },
+    "MotmVote": {
+      "title": "MOTM Vote",
+      "description": "A vote for Man of the Match",
+      "type": "object",
+      "properties": {
+        "matchId": { "type": "string" },
+        "playerId": { "type": "string" },
+        "parentId": { "type": "string" }
+      },
+      "required": ["matchId", "playerId", "parentId"]
+    },
+    "Attendance": {
+      "title": "Attendance",
+      "description": "A player's actual attendance for a match or training",
+      "type": "object",
+      "properties": {
+        "matchId": { "type": "string" },
+        "playerId": { "type": "string" },
+        "teamId": { "type": "string" },
+        "status": { "type": "string", "enum": ["present", "late", "absent"] }
+      },
+      "required": ["matchId", "playerId", "teamId", "status"]
+    },
+    "PlayerNote": {
+      "title": "Player Note",
+      "description": "Coach notes on a player's ability and performance",
+      "type": "object",
+      "properties": {
+        "playerId": { "type": "string" },
+        "teamId": { "type": "string" },
+        "coachId": { "type": "string" },
+        "matchId": { "type": "string" },
+        "note": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "abilityRating": { "type": "number" }
+      },
+      "required": ["playerId", "teamId", "coachId", "note", "date"]
+    },
+    "Note": {
+      "title": "Note",
+      "description": "General notes for the team, matches, or training sessions",
+      "type": "object",
+      "properties": {
+        "teamId": { "type": "string" },
+        "authorId": { "type": "string" },
+        "content": { "type": "string" },
+        "type": { "type": "string", "enum": ["match", "training", "general"] },
+        "relatedId": { "type": "string", "description": "ID of the match or training session" },
+        "playerIds": { 
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["teamId", "authorId", "content", "type", "createdAt"]
+    },
+    "PlayerPayment": {
+      "title": "Player Payment",
+      "description": "Tracks a player's payment balance for match fees",
+      "type": "object",
+      "properties": {
+        "playerId": { "type": "string" },
+        "teamId": { "type": "string" },
+        "totalPaid": { "type": "number" },
+        "matchesPlayed": { "type": "number", "description": "Number of matches this player has been charged for" },
+        "lastPaymentDate": { "type": "string", "format": "date-time" }
+      },
+      "required": ["playerId", "teamId", "totalPaid", "matchesPlayed"]
+    },
+    "PaymentTransaction": {
+      "title": "Payment Transaction",
+      "description": "An individual payment made by a parent",
+      "type": "object",
+      "properties": {
+        "playerId": { "type": "string" },
+        "teamId": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string", "format": "date-time" },
+        "type": { "type": "string", "enum": ["match", "monthly"] },
+        "note": { "type": "string" }
+      },
+      "required": ["playerId", "teamId", "amount", "date", "type"]
+    },
+    "MonthlySub": {
+      "title": "Monthly Sub",
+      "description": "Tracks monthly subscription status for a player",
+      "type": "object",
+      "properties": {
+        "playerId": { "type": "string" },
+        "teamId": { "type": "string" },
+        "month": { "type": "string", "description": "YYYY-MM format" },
+        "status": { "type": "string", "enum": ["paid", "unpaid", "exempt"] },
+        "paidAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["playerId", "teamId", "month", "status"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "teams/{teamId}": {
+      "schema": "Team",
+      "description": "Teams"
+    },
+    "players/{playerId}": {
+      "schema": "Player",
+      "description": "Players"
+    },
+    "matches/{matchId}": {
+      "schema": "Match",
+      "description": "Matches and training sessions"
+    },
+    "availabilities/{availabilityId}": {
+      "schema": "Availability",
+      "description": "Player availabilities"
+    },
+    "motmVotes/{voteId}": {
+      "schema": "MotmVote",
+      "description": "MOTM Votes"
+    },
+    "attendances/{attendanceId}": {
+      "schema": "Attendance",
+      "description": "Player attendance records"
+    },
+    "playerNotes/{noteId}": {
+      "schema": "PlayerNote",
+      "description": "Coach notes on players"
+    },
+    "notes/{noteId}": {
+      "schema": "Note",
+      "description": "Team, match, and training notes"
+    },
+    "subscriptions/{subscriptionId}": {
+      "schema": "Subscription",
+      "description": "Subscription records"
+    },
+    "coachCodes/{codeId}": {
+      "schema": "CoachCode",
+      "description": "Coach access codes"
+    },
+    "playerPayments/{paymentId}": {
+      "schema": "PlayerPayment",
+      "description": "Player payment balances"
+    },
+    "paymentTransactions/{transactionId}": {
+      "schema": "PaymentTransaction",
+      "description": "Individual payment records"
+    },
+    "monthlySubs/{subId}": {
+      "schema": "MonthlySub",
+      "description": "Monthly subscription records"
+    }
+  }
+}

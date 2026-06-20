@@ -1,0 +1,13 @@
+# Touchline Hub Robots.txt - Optimized for Google and Search Engines
+User-agent: *
+Allow: /
+Allow: /terms
+Allow: /privacy
+Disallow: /signup
+Disallow: /onboarding
+Disallow: /api/
+Disallow: /_next/
+Disallow: /static/
+
+# Sitemap Location
+Sitemap: https://touchlinehub.com/sitemap.xml

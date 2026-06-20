@@ -1,0 +1,8 @@
+{
+  "name": "The Touchline Hub_Landing",
+  "description": "Youth Football Management \u0026 Live Stats application for coaches, parents, and players.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
