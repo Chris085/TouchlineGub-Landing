@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { ContactUsModal } from '../components/ContactUsModal';
 
 export function Privacy() {
   const navigate = useNavigate();
+  const [isContactOpen, setIsContactOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-slate-950 font-sans text-white p-6 relative overflow-hidden">
@@ -186,13 +188,23 @@ export function Privacy() {
             <section>
               <h2 className="text-xl font-bold text-white uppercase mb-4 tracking-tight">Contact</h2>
               <p className="mb-4">For privacy-related questions or requests, please contact:</p>
-              <p className="mb-2"><a href="mailto:support@touchlinehub.com" className="text-pitch-green hover:underline">support@touchlinehub.com</a></p>
+              <p className="mb-2">
+                <button 
+                  type="button"
+                  onClick={() => setIsContactOpen(true)} 
+                  className="text-pitch-green hover:underline bg-transparent border-0 p-0 text-left cursor-pointer"
+                >
+                  support@touchlinehub.com
+                </button>
+              </p>
               <p>or</p>
               <p className="mt-2"><a href="https://touchlinehub.com" className="text-pitch-green hover:underline">https://touchlinehub.com</a></p>
             </section>
           </div>
         </div>
       </div>
+
+      <ContactUsModal isOpen={isContactOpen} onClose={() => setIsContactOpen(false)} />
     </div>
   );
 }

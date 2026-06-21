@@ -33,11 +33,68 @@ export function Onboarding() {
   const [user, setUser] = useState<any>(null);
   const [setupComplete, setSetupComplete] = useState(false);
 
+  // User-friendly error translator
+  const formatUserError = (err: any): string => {
+    if (!err) return 'An unexpected error occurred';
+    const msg = err.message || String(err);
+    
+    console.error("Detailed Onboarding Error:", err);
+    
+    try {
+      if (msg.trim().startsWith('{') && msg.trim().endsWith('}')) {
+        const parsed = JSON.parse(msg);
+        if (parsed?.error) {
+          const authStatus = parsed.authInfo?.userId 
+            ? `UID: ${parsed.authInfo.userId} (Email: ${parsed.authInfo.email || 'N/A'}, Verified: ${parsed.authInfo.emailVerified})`
+            : "Not authenticated";
+          return `Database setup failed: ${parsed.error} (Path: ${parsed.path || 'Unknown'}, Operation: ${parsed.operationType}, Auth: ${authStatus}). Please ensure your Firebase security rules allow this user to write to that path.`;
+        }
+      }
+    } catch (e) {
+      // Ignore JSON parse error and fallback
+    }
+
+    return `Error: ${msg}`;
+  };
+
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         setUser(currentUser);
+        
+        // Auto-verify user email state via backend
+        try {
+          await fetch('/api/verify-user', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uid: currentUser.uid }),
+          });
+        } catch (err) {
+          console.error('Auto-verification request failed in Onboarding', err);
+        }
+        
+        // Idempotency check: If user and team documents already exist, bypass onboarding
+        try {
+          const userDocRef = doc(db, 'users', currentUser.uid);
+          const userDocSnap = await getDoc(userDocRef);
+          
+          if (userDocSnap.exists()) {
+            const userData = userDocSnap.data();
+            if (userData?.teamId) {
+              const teamDocRef = doc(db, 'teams', userData.teamId);
+              const teamDocSnap = await getDoc(teamDocRef);
+              
+              if (teamDocSnap.exists()) {
+                console.log('User has already completed onboarding. Redirecting...');
+                window.location.href = 'https://app.touchlinehub.com/login';
+              }
+            }
+          }
+        } catch (err) {
+          console.error("Error during onboarding idempotency check:", err);
+          // Let coach perform setup if verification fails
+        }
       } else {
         // Wait a brief moment to ensure auth state isn't just initializing
         timeoutId = setTimeout(() => {
@@ -58,68 +115,36 @@ export function Onboarding() {
 
     setLoading(true);
     try {
-      const userRef = doc(db, 'users', user.uid);
-      const teamRef = doc(collection(db, 'teams'));
+      console.log('Sending onboarding and team setup details to the server...');
       
-      const startDate = new Date();
-      const endDate = new Date(startDate);
-      // Wait! The user says: "Automatically calculate: subscriptionEndDate as: Start Date + 90 Days"
-      endDate.setDate(endDate.getDate() + 90);
+      const response = await fetch('/api/verify-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          uid: user.uid,
+          email: user.email,
+          teamName: teamName.trim(),
+          league: league.trim(),
+          ageGroup: ageGroup.trim(),
+          plan: selectedPlan,
+        }),
+      });
 
-      const generatedCode = generateTeamCode();
-      const teamData = {
-        name: teamName.trim(),
-        code: generatedCode,
-        teamCode: generatedCode,
-        createdBy: user.uid,
-        createdAt: startDate.toISOString(),
-        subscriptionType: selectedPlan,
-        subscriptionStatus: SubscriptionStatus.ACTIVE,
-        subscriptionStartDate: startDate.toISOString(),
-        subscriptionEndDate: selectedPlan === PlanType.TRIAL ? endDate.toISOString() : null, // Assuming paid is active indefinitely until cancelled via Stripe, or wait, prompt says for Trial: Start Date + 90 Days. For paid: "null" Wait, let me check the prompt to see if paid is null.
-        planName: selectedPlan === PlanType.TRIAL ? "3 Month Free Trial" : "Touchline Hub Coach Pass",
-        trialUsed: selectedPlan === PlanType.TRIAL,
-        stripeCustomerId: null,
-        stripeSubscriptionId: null,
-        isReadOnly: false,
-      };
-
-      if (league.trim()) (teamData as any).league = league.trim();
-      if (ageGroup.trim()) (teamData as any).ageGroup = ageGroup.trim();
-
-      try {
-        await setDoc(teamRef, teamData);
-      } catch (err: any) {
-        handleFirestoreError(err, OperationType.CREATE, `teams/${teamRef.id}`);
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'Server rejected onboarding request.');
       }
 
-      const userData = {
-        uid: user.uid,
-        displayName: user.displayName || 'Coach',
-        email: user.email || '',
-        role: 'coach',
-        teamId: teamRef.id,
-        createdAt: startDate.toISOString(),
-        lastLogin: startDate.toISOString(),
-        isActive: true,
-      };
+      const result = await response.json();
+      console.log('Onboarding was successfully processed on the server:', result);
 
-      try {
-        await setDoc(userRef, userData, { merge: true });
-      } catch (err: any) {
-        handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}`);
-      }
-
-      if (!user.emailVerified && user.providerData[0]?.providerId === 'password') {
-        setSetupComplete(true);
-        setLoading(false);
-      } else {
-        // Redirect to the app
-        window.location.href = 'https://app.touchlinehub.com/login';
-      }
+      // Redirect user directly to the application
+      window.location.href = 'https://app.touchlinehub.com/login';
     } catch (error: any) {
       console.error('Error creating team:', error);
-      setErrorMsg(error?.message || 'An unknown error occurred');
+      setErrorMsg(formatUserError(error));
       setLoading(false);
     }
   };
@@ -131,6 +156,7 @@ export function Onboarding() {
 
     setLoading(true);
     try {
+      console.log('Starting team join process with code:', joinCode.trim().toUpperCase());
       const teamsRef = collection(db, 'teams');
       
       // First, try to query using the 'code' field as requested
@@ -148,7 +174,6 @@ export function Onboarding() {
       }
 
       const teamDoc = querySnapshot.docs[0];
-
       const userRef = doc(db, 'users', user.uid);
       const startDate = new Date();
       
@@ -164,21 +189,24 @@ export function Onboarding() {
       };
 
       try {
+        console.log('Writing user profile document for join:', user.uid);
         await setDoc(userRef, userData, { merge: true });
+        console.log('Joined team and user profile created successfully');
       } catch (err: any) {
         handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}`);
       }
 
-      if (!user.emailVerified && user.providerData[0]?.providerId === 'password') {
-        setSetupComplete(true);
-        setLoading(false);
-      } else {
-        // Redirect to the app
-        window.location.href = 'https://app.touchlinehub.com/login';
+      // Make sure the record exists
+      const finalUserSnap = await getDoc(userRef);
+      if (!finalUserSnap.exists()) {
+        throw new Error("Verification failed: Could not confirm successful storage of join data. Please try again.");
       }
+
+      console.log('Onboarding join step validated. Proceeding to destination...');
+      window.location.href = 'https://app.touchlinehub.com/login';
     } catch (error: any) {
       console.error('Error joining team:', error);
-      setErrorMsg(error?.message || 'An unknown error occurred');
+      setErrorMsg(formatUserError(error));
       setLoading(false);
     }
   };

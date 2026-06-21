@@ -2,68 +2,127 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper function to check if the user is logged in
-    function isSignedIn() {
+    
+    // --- Helper Functions ---
+    
+    // Check if the user is authenticated
+    function isAuthenticated() {
       return request.auth != null;
     }
-
-    // Rules for each collection
     
-    match /users/{userId} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn() && request.auth.uid == userId;
+    // Get current user's profile data
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    // Check if user document exists
+    function userExists() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+    
+    // Check if the logged-in user is an admin
+    function isAdmin() {
+      return isAuthenticated() && userExists() && getUserData().role == 'admin';
+    }
+    
+    // Check if the user is a coach of the team
+    function isCoach(teamId) {
+      return isAuthenticated() && (
+        (userExists() && getUserData().role == 'coach') ||
+        (exists(/databases/$(database)/documents/teams/$(teamId)) && 
+         (get(/databases/$(database)/documents/teams/$(teamId)).data.coachId == request.auth.uid ||
+          get(/databases/$(database)/documents/teams/$(teamId)).data.createdBy == request.auth.uid))
+      );
+    }
+    
+    // Check if the user is a member of the team
+    function isTeamMember(teamId) {
+      return isAuthenticated() && (
+        (userExists() && getUserData().teamId == teamId) ||
+        (exists(/databases/$(database)/documents/teams/$(teamId)) && 
+         get(/databases/$(database)/documents/teams/$(teamId)).data.coachId == request.auth.uid)
+      );
+    }
+    
+    // Validate team schema
+    function isValidTeam(teamData) {
+      return teamData.name != null && teamData.code != null && teamData.coachId != null;
+    }
+    
+    // Validate user schema
+    function isValidUser(userData) {
+      return userData.uid != null && userData.email != null && userData.role != null;
     }
 
+    // --- Collections Rules ---
+    
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Teams Collection Access Control
     match /teams/{teamId} {
-      allow read, write: if isSignedIn();
+      allow read: if isAuthenticated();
+      // FIX: Allow create if authenticated and the payload is valid, without checking isCoach yet
+      allow create: if isAuthenticated() && (isValidTeam(request.resource.data) || isAdmin()); 
+      allow update: if (isAdmin() || isCoach(teamId)) && isValidTeam(request.resource.data);
+      allow delete: if isAdmin();
     }
 
     match /players/{playerId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isAuthenticated();
     }
 
     match /matches/{matchId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isAuthenticated();
+      
+      // Events Sub-Collection Rules
+      match /events/{eventId} {
+        // Optimized Event Read Rule (Assumes teamId is on the event document)
+        allow read: if isAdmin() || isTeamMember(resource.data.teamId);
+        allow write: if isAdmin() || isCoach(get(/databases/$(database)/documents/matches/$(matchId)).data.teamId);
+      }
     }
 
     match /availabilities/{availabilityId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isAuthenticated();
     }
 
     match /motmVotes/{voteId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isAuthenticated();
     }
 
     match /attendances/{attendanceId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isAuthenticated();
     }
 
     match /playerNotes/{noteId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isAuthenticated();
     }
 
     match /notes/{noteId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isAuthenticated();
     }
 
     match /subscriptions/{subscriptionId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isAuthenticated();
     }
 
     match /coachCodes/{codeId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isAuthenticated();
     }
 
     match /playerPayments/{paymentId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isAuthenticated();
     }
 
     match /paymentTransactions/{transactionId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isAuthenticated();
     }
 
     match /monthlySubs/{subId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isAuthenticated();
     }
 
     // Default deny catch-all
@@ -72,4 +131,3 @@ service cloud.firestore {
     }
   }
 }
-

@@ -52,6 +52,17 @@ export function Signup() {
         const result = await signInWithEmailAndPassword(auth, email, password);
         const user = result.user;
         
+        // Auto-verify on login if not already
+        try {
+          await fetch('/api/verify-user', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uid: user.uid }),
+          });
+        } catch (err) {
+          console.error('Auto-verification request failed', err);
+        }
+
         const userRef = doc(db, 'users', user.uid);
         const userSnap = await getDoc(userRef);
 
@@ -64,6 +75,17 @@ export function Signup() {
         const result = await createUserWithEmailAndPassword(auth, email, password);
         const user = result.user;
         
+        // Auto-verify on signup
+        try {
+          await fetch('/api/verify-user', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uid: user.uid }),
+          });
+        } catch (err) {
+          console.error('Auto-verification request failed', err);
+        }
+
         try {
           await sendEmailVerification(user, {
             url: 'https://app.touchlinehub.com/login',
