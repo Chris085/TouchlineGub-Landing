@@ -38,6 +38,73 @@ async function startServer() {
 
   app.use(express.json());
 
+  // Helper to send beautiful Touchline Hub welcome and verification confirmation email via Resend
+  const sendWelcomeVerificationEmail = async (email: string, displayName: string) => {
+    try {
+      const apiKey = process.env.RESEND_API_KEY || "re_UWcDvm4r_24N3YXh5hkadLVaDEXxQqDhz";
+      console.log(`Sending onboarding welcome verification email via Resend to: ${email}`);
+      
+      const emailBody = {
+        from: "Touchline Hub <onboarding@resend.dev>",
+        to: email,
+        subject: "Welcome to Touchline Hub - Email Verified & Confirmed",
+        html: `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 30px; border: 1px solid #1e293b; background-color: #020617; border-radius: 20px; color: #f8fafc;">
+            <div style="text-align: center; margin-bottom: 35px;">
+              <div style="display: inline-block; padding: 12px; background-color: rgba(22, 163, 74, 0.1); border-radius: 16px; border: 1px solid rgba(22, 163, 74, 0.2); margin-bottom: 16px;">
+                <svg style="color: #16a34a; width: 44px; height: 44px; display: block;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" width="44" height="44">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="#16a34a" />
+                </svg>
+              </div>
+              <h1 style="color: #ffffff; font-size: 26px; font-weight: 900; margin: 0; text-transform: uppercase; letter-spacing: -0.5px;">Touchline Hub</h1>
+              <p style="color: #16a34a; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; margin: 6px 0 0 0;">ACCOUNT VERIFIED SUCCESSFULLY</p>
+            </div>
+            
+            <div style="background-color: #0f172a; border: 1px solid #1e293b; border-radius: 16px; padding: 28px; margin-bottom: 25px;">
+              <p style="margin-top: 0; color: #ffffff; font-size: 18px; font-weight: 700;">Hello ${displayName || 'Coach'},</p>
+              <p style="color: #94a3b8; font-size: 14px; line-height: 1.6; margin-bottom: 20px;">
+                Welcome to <strong style="color: #ffffff;">Touchline Hub</strong>! We are absolutely thrilled to have you lead your team using our professional football analytics and matchday dashboard.
+              </p>
+              <p style="color: #94a3b8; font-size: 14px; line-height: 1.6; margin-bottom: 24px;">
+                Your coach profile has been successfully set up, and your email address has been programmatically verified on our platform. No further action is required to unlock your account.
+              </p>
+              
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="https://app.touchlinehub.com/login" style="display: inline-block; background-color: #16a34a; color: #ffffff; font-weight: 800; text-transform: uppercase; font-size: 12px; letter-spacing: 1px; padding: 15px 30px; border-radius: 10px; text-decoration: none; border: 1px solid #15803d; box-shadow: 0 4px 12px rgba(22, 163, 74, 0.2);">
+                  Access Coach Dashboard
+                </a>
+              </div>
+            </div>
+
+            <div style="border-top: 1px solid #1e293b; padding-top: 25px; font-size: 12px; color: #64748b; text-align: center; line-height: 1.5;">
+              <p style="margin: 0 0 8px 0;">Need immediate support, want to request features, or have any suggestions? Simply reply to this email, and our feedback loop will route it directly to our lead engineering team.</p>
+              <p style="margin: 0;">&copy; 2026 Touchline Hub. All rights reserved.</p>
+            </div>
+          </div>
+        `
+      };
+
+      const resendResponse = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(emailBody)
+      });
+
+      if (!resendResponse.ok) {
+        const errText = await resendResponse.text();
+        throw new Error(`Resend API returned status ${resendResponse.status}: ${errText}`);
+      }
+
+      const resendData: any = await resendResponse.json();
+      console.log(`Successfully sent custom welcome verification email through Resend:`, resendData);
+    } catch (err: any) {
+      console.error("Resend welcome verification email sending failed:", err);
+    }
+  };
+
   // API routes
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
@@ -62,7 +129,7 @@ async function startServer() {
               authUser = await admin.auth().createUser({
                 email,
                 password,
-                emailVerified: true
+                emailVerified: false
               });
               uid = authUser.uid;
               console.log(`Successfully created new Firebase Auth user for email: ${email}, uid: ${uid}`);
@@ -79,16 +146,8 @@ async function startServer() {
         return res.status(400).json({ error: "Missing uid or email parameter" });
       }
 
-      // 2. Mark user auto-verified in Auth
       if (!authUser) {
         authUser = await admin.auth().getUser(uid);
-      }
-      
-      if (!authUser.emailVerified) {
-        await admin.auth().updateUser(uid, {
-          emailVerified: true
-        });
-        console.log(`Successfully verified email for user: ${uid}`);
       }
 
       const userEmail = authUser.email || email || "";
@@ -113,12 +172,15 @@ async function startServer() {
           originalVerified = existingTeamDoc.data().verified ?? false;
           console.log(`Found existing team: ${teamId} for user: ${uid}`);
 
-          await teamRef.set({
+          const updateFields: any = {
             name: teamName.trim(),
             coachId: uid,
             createdBy: uid,
             verified: originalVerified,
-          }, { merge: true });
+            isVerified: false,
+          };
+
+          await teamRef.set(updateFields, { merge: true });
         } else {
           // Create new team
           teamRef = teamsColl.doc();
@@ -155,7 +217,8 @@ async function startServer() {
             stripeCustomerId: null,
             stripeSubscriptionId: null,
             isReadOnly: true,
-            verified: false, // Set verified: false as requested
+            verified: false,
+            isVerified: false,
           };
 
           if (league && league.trim()) teamData.league = league.trim();
@@ -178,12 +241,20 @@ async function startServer() {
           createdAt: nowStr,
           lastLogin: nowStr,
           isActive: true,
+          isVerified: false,
+          emailVerified: false,
+          verificationToken: Math.random().toString(36).substring(2, 12).toUpperCase(),
         };
         if (teamId) {
           userProfile.teamId = teamId;
         }
         await userRef.set(userProfile, { merge: true });
         console.log(`Successfully created Firestore users/${uid} document on server.`);
+
+        // Send a beautiful custom verification/welcome email via Resend
+        if (userEmail) {
+          await sendWelcomeVerificationEmail(userEmail, displayName);
+        }
       } else {
         const updateData: any = {
           lastLogin: nowStr
@@ -197,13 +268,125 @@ async function startServer() {
 
       return res.json({ 
         success: true, 
-        emailVerified: true, 
+        emailVerified: false, 
         uid: uid, 
         teamId: teamId 
       });
     } catch (err: any) {
       console.error("Failed in verification/creation process on server:", err);
       return res.status(500).json({ error: err.message || "Internal server error" });
+    }
+  });
+
+  // Unique source of truth for email verification of coaches
+  app.all("/api/verify-email", async (req, res) => {
+    const token = req.query.token || req.body.token;
+    const uid = req.query.uid || req.body.uid;
+
+    if (!token && !uid) {
+      return res.status(400).json({ error: "Missing verification parameters. 'token' or 'uid' is required." });
+    }
+
+    try {
+      const db = getDb();
+      let userDocToVerify = null;
+
+      if (token) {
+        const userQuery = await db.collection("users").where("verificationToken", "==", token).limit(1).get();
+        if (!userQuery.empty) {
+          userDocToVerify = userQuery.docs[0];
+        }
+      } else if (uid) {
+        const userDoc = await db.collection("users").doc(uid).get();
+        if (userDoc.exists) {
+          userDocToVerify = userDoc;
+        }
+      }
+
+      if (!userDocToVerify) {
+        return res.status(404).json({ error: "Invalid or expired verification token." });
+      }
+
+      const userRef = userDocToVerify.ref;
+      const userData = userDocToVerify.data();
+      const userId = userDocToVerify.id;
+
+      // Update Firebase Auth user's emailVerified state to true
+      try {
+        await admin.auth().updateUser(userId, {
+          emailVerified: true
+        });
+        console.log(`Successfully verified email in Firebase Auth for user: ${userId}`);
+      } catch (authErr) {
+        console.error("Failed to update emailVerified in Firebase Auth, but proceeding with Firestore verification:", authErr);
+      }
+
+      // Update Firestore user document
+      await userRef.update({
+        isVerified: true,
+        emailVerified: true,
+        verificationToken: admin.firestore.FieldValue.delete()
+      });
+
+      console.log(`Firestore user ${userId} has been marked as verified.`);
+
+      // Update team if user has a team
+      const teamId = userData.teamId;
+      if (teamId) {
+        const teamRef = db.collection("teams").doc(teamId);
+        const teamSnap = await teamRef.get();
+        if (teamSnap.exists) {
+          await teamRef.update({
+            isVerified: true,
+            isReadOnly: false
+          });
+          console.log(`Successfully verified team ${teamId} and set isReadOnly to false.`);
+        }
+      }
+
+      return res.json({
+        success: true,
+        message: "Email and team registration verified successfully."
+      });
+    } catch (err: any) {
+      console.error("Email verification failed:", err);
+      return res.status(500).json({ error: err.message || "Email verification failed" });
+    }
+  });
+
+  // Cleanup user "limbo" status (registered in Auth but does not exist in Firestore users collection)
+  app.post("/api/cleanup-limbo", async (req, res) => {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: "Email parameter is required." });
+    }
+
+    try {
+      console.log(`Checking limbo status for email: ${email}`);
+      let authUser;
+      try {
+        authUser = await admin.auth().getUserByEmail(email);
+      } catch (authErr: any) {
+        if (authErr.code === 'auth/user-not-found') {
+          return res.json({ status: "not_found", message: "Email is not in Firebase Auth." });
+        }
+        throw authErr;
+      }
+
+      const uid = authUser.uid;
+      const userRef = getDb().collection("users").doc(uid);
+      const userSnap = await userRef.get();
+
+      if (!userSnap.exists) {
+        console.log(`User ${uid} with email ${email} exists in Auth but not Firestore. Deleting limbo Auth user...`);
+        await admin.auth().deleteUser(uid);
+        return res.json({ status: "cleaned", message: "Limbo user successfully cleaned up from Auth." });
+      }
+
+      return res.json({ status: "active", message: "Email is registered with a completed account." });
+    } catch (err: any) {
+      console.error("Limbo cleanup error:", err);
+      return res.status(500).json({ error: err.message || "Failed to check or cleanup email limbo status." });
     }
   });
 

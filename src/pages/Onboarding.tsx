@@ -176,7 +176,7 @@ export function Onboarding() {
       const teamDoc = querySnapshot.docs[0];
       const userRef = doc(db, 'users', user.uid);
       const startDate = new Date();
-      
+
       const userData = {
         uid: user.uid,
         displayName: user.displayName || 'Coach',
@@ -186,6 +186,8 @@ export function Onboarding() {
         createdAt: startDate.toISOString(),
         lastLogin: startDate.toISOString(),
         isActive: true,
+        isVerified: false,
+        emailVerified: false,
       };
 
       try {

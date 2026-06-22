@@ -72,32 +72,78 @@ export function Signup() {
           window.location.href = 'https://app.touchlinehub.com/login';
         }
       } else {
-        const result = await createUserWithEmailAndPassword(auth, email, password);
-        const user = result.user;
-        
-        // Auto-verify on signup
         try {
-          await fetch('/api/verify-user', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ uid: user.uid }),
-          });
-        } catch (err) {
-          console.error('Auto-verification request failed', err);
-        }
+          const result = await createUserWithEmailAndPassword(auth, email, password);
+          const user = result.user;
+          
+          // Auto-verify on signup
+          try {
+            await fetch('/api/verify-user', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ uid: user.uid }),
+            });
+          } catch (err) {
+            console.error('Auto-verification request failed', err);
+          }
 
-        try {
-          await sendEmailVerification(user, {
-            url: 'https://app.touchlinehub.com/login',
-            handleCodeInApp: false,
-          });
-        } catch (verifyError) {
-          console.error('Error sending verification email', verifyError);
-          // Continue anyway so they can complete onboarding
-        }
+          try {
+            await sendEmailVerification(user, {
+              url: 'https://app.touchlinehub.com/login',
+              handleCodeInApp: false,
+            });
+          } catch (verifyError) {
+            console.error('Error sending verification email', verifyError);
+            // Continue anyway so they can complete onboarding
+          }
 
-        // Proceed to onboarding where they'll configure their team.
-        navigate(`/onboarding?plan=${plan}`);
+          // Proceed to onboarding where they'll configure their team.
+          navigate(`/onboarding?plan=${plan}`);
+        } catch (error: any) {
+          if (error.code === 'auth/email-already-in-use') {
+            console.log('Email already exists, checking if it is an orphaned account in limbo...');
+            try {
+              const res = await fetch('/api/cleanup-limbo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email }),
+              });
+              if (res.ok) {
+                const data = await res.json();
+                if (data.status === 'cleaned') {
+                  console.log('Successfully cleaned up limbo user. Retrying signup...');
+                  const retryResult = await createUserWithEmailAndPassword(auth, email, password);
+                  const retryUser = retryResult.user;
+                  
+                  try {
+                    await fetch('/api/verify-user', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ uid: retryUser.uid }),
+                    });
+                  } catch (err) {
+                    console.error('Auto-verification request failed during retry', err);
+                  }
+
+                  try {
+                    await sendEmailVerification(retryUser, {
+                      url: 'https://app.touchlinehub.com/login',
+                      handleCodeInApp: false,
+                    });
+                  } catch (verifyError) {
+                    console.error('Error sending verification email during retry', verifyError);
+                  }
+
+                  navigate(`/onboarding?plan=${plan}`);
+                  return;
+                }
+              }
+            } catch (cleanupErr) {
+              console.error('Error while checking and cleaning up limbo user:', cleanupErr);
+            }
+          }
+          throw error;
+        }
       }
     } catch (error: any) {
       console.error('Error with Email auth:', error);

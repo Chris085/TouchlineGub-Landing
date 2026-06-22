@@ -11,6 +11,7 @@
         "photoURL": { "type": "string" },
         "role": { "type": "string", "enum": ["coach", "parent", "player"] },
         "teamId": { "type": "string", "description": "The ID of the team they belong to" },
+        "isVerified": { "type": "boolean", "description": "Whether the user's email is verified" },
         "subscriptionStatus": { "type": "string", "enum": ["active", "inactive"], "description": "Current subscription status" }
       },
       "required": ["uid", "email", "role"]
@@ -51,6 +52,8 @@
         "name": { "type": "string" },
         "code": { "type": "string", "description": "6-digit code for parents to join" },
         "coachId": { "type": "string" },
+        "isReadOnly": { "type": "boolean", "description": "Whether the team is in read-only mode" },
+        "isVerified": { "type": "boolean", "description": "Whether the team registration is verified" },
         "seasonStart": { "type": "string", "format": "date" },
         "seasonEnd": { "type": "string", "format": "date" },
         "seasonTag": { "type": "string", "description": "e.g., 25/26" },
